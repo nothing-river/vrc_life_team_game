@@ -8,18 +8,21 @@ const fame = (p, n) => p.fame = Math.max(0, Math.min(5, p.fame + n));
 const score = p => p.money + MONEY_SCALE * ((p.sugar ? 2000 + (p.sugar - 1) * 1000 : 0) + (p.live ? 1000 : 0) + (p.married ? 2000 : 0) + p.fame * 500 + (G.over && missionOK(p) ? MISSION_BONUS : 0)) - (p.debt || 0);
 
 const makeHid = (n, goal) => [...Array(n).keys()].filter(i => i > 0 && !(goal && i === n - 1) && rnd(0, 1));
+// プレイヤーの初期状態（開始時・途中参戦で共通）
+function newPlayer(p, rules) { return { ...p, team: p.team === 1 ? 1 : 0, pos: 0, money: rules.money || START_MONEY, love: 0, trait: null, royal: null, style: null, job: 'none', mission: null, st: {}, ally: null, allyN: 0, muted: 0, exposed: false, debt: 0, regulars: 0, annTurn: 0, revenge: -1, sugar: 0, friends: 0, exes: 0, live: false, married: false, fbt: false, pc: false, fame: 0, skip: 0, items: ['dice2'], done: false, rank: 0 }; }
 function initUI(ps, turns, rules) {
   rules = rules && typeof rules === 'object' ? rules : { fog: !!rules };
   const fog = rules.fog;
   const qsets = ps.map(p => p.qs || []); // 登録された問題（ホスト/同じ端末のみ保持。回答は他の人へ送らない）
   const order = ps.map((_, i) => i); // 手番の順番はランダム（入室順にしない）
   for (let i = order.length - 1; i > 0; i--) { const j = rnd(0, i); [order[i], order[j]] = [order[j], order[i]]; }
-  G = { order, oi: 0, ps: ps.map(p => ({ ...p, team: p.team === 1 ? 1 : 0, pos: 0, money: rules.money || START_MONEY, love: 0, trait: null, royal: null, style: null, job: 'none', mission: null, st: {}, ally: null, allyN: 0, muted: 0, exposed: false, debt: 0, regulars: 0, annTurn: 0, revenge: -1, sugar: 0, friends: 0, exes: 0, live: false, married: false, fbt: false, pc: false, fame: 0, skip: 0, items: ['dice2'], done: false, rank: 0 })),
+  G = { order, oi: 0, ps: ps.map(p => newPlayer(p, rules)),
     t: order[0], round: 1, turns: turns || DEFAULT_TURNS, fog: !!fog, rules, goalRound: 0, global: null, ask: null, curType: null, hid: null, quiz: null, stage: 'main', fin: 0, busy: false, over: false };
   G.qpool = qsets.flatMap((a, i) => a.map(q => ({ ...q, author: i }))); G.ps.forEach(p => { delete p.qs; });
   if (G.fog) G.hid = makeHid(LAYOUT.length, false);
   $('#setup').hidden = true; $('#game').hidden = false; if (document.body) document.body.classList.add('playing');
   $('#roll').onclick = () => onRoll(-1);
+  $('#joinplay').onclick = e => { const b = e.target.closest('button'); if (b && Net.conn && Net.conn.open) { Net.conn.send({ k: 'joinplay', t: +b.dataset.t }); b.disabled = true; } };
   $('#items').onclick = e => { const x = e.target.closest('button'); if (x && !x.disabled) onRoll(+x.dataset.i); };
   $('#quiz').onclick = e => {
     const b = e.target.closest('button'); if (!b || b.disabled) return;
@@ -161,23 +164,23 @@ async function endTurn(p, income) {
   await sleep(700);
   const no = nextO();
   if (no < 0) { G.over = true; return finish(); }
-  if (G.stage === 'goal' && no <= G.oi && ++G.goalRound >= GOAL_ROUNDS_MAX) { G.over = true; return finish(); } // ゴールステージは最大4ラウンド
+  if (G.stage === 'goal' && no <= G.oi && ++G.goalRound >= GOAL_ROUNDS_MAX) { G.over = true; return finish(); } // 安全装置（通常は全員がゴールした時点で終了する）
   G.oi = no; G.t = G.order[no];
   if (G.stage === 'main' && G.oi === 0) { if (++G.round > G.turns) return toGoalStage(); await rollGlobal(); }
   G.busy = false; announce();
   if (G.ps[G.t].auto) setTimeout(turn, 900); // 退出した人は自動で進行
 }
 
-// 規定ターン終了：ゴールステージへ。所持金の多い順にスタート位置が前になる
+// 規定ラウンド終了：ゴールステージへ。全員がスタートマスに集合する
 async function toGoalStage() {
   say('🏁 ゴールステージへ！\nここからは一本道。ゴールを目指せ！'); log('ゴールステージ開始');
   await sleep(1800);
-  [...G.ps].sort((a, b) => score(b) - score(a)).forEach((p, i) => p.pos = Math.floor((G.ps.length - 1 - i) * Math.min(1, 3 / Math.max(1, G.ps.length - 1)))); // 上位ほど前からスタート（最大3マス差）
+  G.ps.forEach(p => p.pos = 0); // ゴールステージは、全員が最初のマスに集合してスタート
   G.goalRound = 0;
   sfx('goal'); G.global = null; if (G.fog) G.hid = makeHid(LAYOUT2.length, true);
   G.stage = 'goal'; G.oi = 0; G.t = G.order[0];
   renderBoard(); renderTokens(); renderStat();
-  log('所持金の多い順にスタート位置が前になった');
+  log('全員がスタートマスに集合した（全員がゴールするまで続きます）');
   G.busy = false; announce();
   if (G.ps[G.t].auto) setTimeout(turn, 900);
 }
@@ -468,10 +471,10 @@ function finish() {
     <div class="tgrid">${block(0)}${block(1)}</div>
     <details class="how"><summary>📖 結果の見かた</summary>
       <p>最終得点 ＝ 所持金（ゴール順ボーナス込み）＋お砂糖・同棲・結婚・人気度・ミッションのボーナス − 借金。名前をクリックすると内訳が見られます。</p>
-      <p>ゴール順ボーナス：1位 ${yen(GOAL_BONUS[0] * K)} ／ 2位 ${yen(GOAL_BONUS[1] * K)} ／ 3位 ${yen(GOAL_BONUS[2] * K)} …（10位以降は ${yen(GOAL_BONUS[9] * K)}）。ゴールステージは最大${GOAL_ROUNDS_MAX}ラウンドです。</p></details>
+      <p>ゴール順ボーナス：1位 ${yen(GOAL_BONUS[0] * K)} ／ 2位 ${yen(GOAL_BONUS[1] * K)} ／ 3位 ${yen(GOAL_BONUS[2] * K)} …（10位以降は ${yen(GOAL_BONUS[9] * K)}）。ゴールステージは全員がゴールするまで続きます。</p></details>
     <div class="endbtns"><button class="big" onclick="backToRoom()">${Net.on ? (Net.host ? 'ルームに戻って再戦する' : 'ルームに戻る') : 'もう一度遊ぶ（設定に戻る）'}</button>
     <button onclick="location.reload()">トップに戻る</button></div>
     ${Net.on ? '<p class="lead">ホストが「ルームに戻る」を押すと、戻ってきた人が同じルームに集まります（観戦者はそのまま残ります）。</p>' : ''}`;
   $('#result').showModal();
 }
-window.VER_GAME = '2026.10.25-t1';
+window.VER_GAME = '2026.10.25-t3';

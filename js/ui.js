@@ -101,7 +101,7 @@ function buildSetup(onStart) {
       <p class="lead">${isHost ? '合言葉を決めて、参加する人に伝えてください。参加者は最大20人、観戦者は最大6人です。入室後に、ホストが2チームへ振り分けます。' : 'ホストに教えてもらった合言葉を入力してください。'}</p>
       ${rowHtml(0)}
       ${photoNote(true)}
-      <input id="pw" class="nm pw" maxlength="20" placeholder="合言葉（なんでもOK）">${isHost ? turnsHtml : '<label class="tn chk"><input type="checkbox" id="asSpec"> 👀 観戦者として入る（最大6人・操作はできません。ゲーム中でも入れます）</label>'}
+      <input id="pw" class="nm pw" maxlength="20" placeholder="合言葉（なんでもOK）">${isHost ? turnsHtml + '<label class="tn chk"><input type="checkbox" id="rteam" checked> 🔴🔵 プレイヤーが自分でチームを選べる（オフにするとホストだけが決めます）</label><label class="tn chk"><input type="checkbox" id="rlate" checked> ⚔️ 観戦者が、ゲーム中に参加者として途中参戦できる</label>' : '<label class="tn chk"><input type="checkbox" id="asSpec"> 👀 観戦者として入る（最大6人・操作はできません。ゲーム中でも入れます）</label>'}
       <p id="err" class="err" role="alert"></p>
       <button id="go" class="big">${isHost ? 'ルーム作成' : '入室'}</button> <button class="back">戻る</button><div id="lob"></div>`;
     const meNow = () => cleanProfile({ name: el.querySelector('.nm').value.trim(), img: photos[0], color: cc.get(), qs: qe.get() }, isHost ? 'ホスト' : 'ゲスト');
@@ -120,26 +120,30 @@ function buildSetup(onStart) {
       seat: n => {},
       error: m => { $('#err').textContent = m; $('#go').disabled = false; },
       update: (list, specs = []) => {
+        const allow = Net.allowTeam !== false;
         const cnt = [0, 0], kin = list.map(p => cnt[p.team || 0]++), eff = list.map((p, i) => p.color || teamColor(p.team || 0, kin[i]));
         const mine = isHost ? 0 : Net.seat; if (!Net.spec && list[mine]) cc.setDefault(eff[mine]);
         const col = t => `<div class="tcol t${t}"><h3>${TEAMS[t].icon} ${TEAMS[t].name}（${cnt[t]}人）</h3>${list.map((p, i) => [p, i]).filter(([p]) => (p.team || 0) === t).map(([p, i]) =>
-          `<div class="lp">${tok({ ...p, color: eff[i] })}<span>${esc(p.name)}${i === 0 ? '（ホスト）' : ''}${!Net.spec && i === mine ? ' ★' : ''}</span><small>❓${(p.qs ? p.qs.length : p.qn) || 0}</small>${isHost ? `<button class="tmv" data-i="${i}" title="もう一方のチームへ移動">⇄</button>` : ''}</div>`).join('')}</div>`;
+          `<div class="lp">${tok({ ...p, color: eff[i] })}<span>${esc(p.name)}${i === 0 ? '（ホスト）' : ''}${!Net.spec && i === mine ? ' ★' : ''}</span><small>❓${(p.qs ? p.qs.length : p.qn) || 0}</small>${!Net.spec && i === mine && (isHost || allow) ? [0, 1].map(t => `<button class="tpick${(p.team || 0) === t ? ' on' : ''}" data-t="${t}" title="${TEAMS[t].name}にする">${TEAMS[t].icon}</button>`).join('') : (isHost ? `<button class="tmv" data-i="${i}" title="もう一方のチームへ移動">⇄</button>` : '')}</div>`).join('')}</div>`;
         const ok = list.length >= 2 && cnt[0] > 0 && cnt[1] > 0;
         $('#lob').innerHTML = `<h2>参加者 ${list.length}/${MAX_PLAYERS}</h2><div class="tcols">${col(0)}${col(1)}</div>`
           + (Math.abs(cnt[0] - cnt[1]) > 1 ? '<p class="err">チームの人数に差があります。公平にするなら振り分けを調整してください。</p>' : '')
           + `<p class="lead">👀 観戦者 ${specs.length}/${MAX_SPECS}${specs.length ? '：' + specs.map(esc).join('、') : ''}</p>`
-          + (Net.spec ? '<p class="lead">👀 観戦者として入室しました。ホストの開始を待っています…</p>' : '<p class="lead">名前・写真・色は入室後も上の欄で変更できます。</p>')
+          + (Net.spec ? '<p class="lead">👀 観戦者として入室しました。ホストの開始を待っています…</p>' : `<p class="lead">${allow ? '自分のチームは、名前の横の🔴🔵ボタンで選べます。' : 'チームはホストが決めます。'}名前・写真・色は入室後も上の欄で変更できます。</p>`)
           + (isHost ? `<div class="hbtns"><button id="rand">🔀 ランダムに振り分け</button><button id="start" class="big" ${ok ? '' : 'disabled'}>この人数で開始</button></div>` : (Net.spec ? '' : '<p class="lead">ホストの開始を待っています…</p>'));
       }
     };
     $('#lob').onclick = e => {
-      const b = e.target.closest('button'); if (!b || !isHost) return;
+      const b = e.target.closest('button'); if (!b) return;
+      if (b.classList.contains('tpick')) { const t = +b.dataset.t; if (isHost) { Net.lobby[0].team = t; pushLobby(); ui.update(Net.lobby, specNames()); } else if (Net.conn && Net.conn.open) Net.conn.send({ k: 'team', t }); return; }
+      if (!isHost) return;
       if (b.classList.contains('tmv')) { const p = Net.lobby[+b.dataset.i]; p.team = (p.team || 0) ^ 1; }
       else if (b.id === 'rand') { const idx = Net.lobby.map((_, i) => i).sort(() => Math.random() - 0.5); idx.forEach((i, k) => Net.lobby[i].team = k % 2); }
       else if (b.id === 'start') return startOnline();
       else return;
       pushLobby(); ui.update(Net.lobby, specNames());
     };
+    if (isHost) $('#rteam').onchange = () => { Net.allowTeam = $('#rteam').checked; pushLobby(); ui.update(Net.lobby, specNames()); };
     $('#go').onclick = () => {
       const pw = $('#pw').value.trim();
       if (!pw) return ui.error('合言葉を入力してください');
@@ -251,7 +255,7 @@ function renderLegend() {
 }
 function renderTurn() {
   const cp = G.ps[G.t], n = G.ps.length, k = (G.order || []).indexOf(G.t) + 1, goal = G.stage === 'goal', left = G.turns - G.round;
-  const head1 = goal ? '<b class="big1">🏁 ゴールステージ</b><span>ゴールまで一本道！（第${Math.min(G.goalRound + 1, GOAL_ROUNDS_MAX)}/${GOAL_ROUNDS_MAX}ラウンド）</span>'
+  const head1 = goal ? '<b class="big1">🏁 ゴールステージ</b><span>全員がゴールするまで続きます（第${G.goalRound + 1}ラウンド）</span>'
     : `<b class="big1">第 ${G.round} / ${G.turns} ターン</b><span>${left > 0 ? (left <= 5 ? `ゴールステージまであと${left}ターン` : `残り${left}ターン`) : '最終ターン！この後ゴールステージへ'}</span>`;
   const bar = goal ? '' : `<div class="bar"><i style="width:${Math.min(100, (G.round - 1 + k / n) / G.turns * 100)}%"></i></div>`;
   $('#turn').innerHTML = `<div class="t1">${head1}${G.global ? `<span class="gl">🌐 ${esc(G.global.icon)}${esc(G.global.name)}：${esc(G.global.desc)}</span>` : ''}</div>${bar}<div class="t2" style="${cv(cp.color)}">${tok(cp)}<strong>${TEAMS[cp.team].icon}${esc(cp.name)}</strong> の番<small>（手番 ${k}/${n}）</small></div>`;
@@ -287,7 +291,7 @@ function renderStat() {
   renderScore();
   const cp = G.ps[G.t], own = !(Net.on && G.t !== Net.seat), mine = !G.busy && !G.over && !cp.done && own;
   $('#items').innerHTML = cp.items.map((k, i) => `<button data-i="${i}" ${mine && !cp.muted && !['amulet', 'guard', 'scope'].includes(k) ? '' : 'disabled'} title="${ITEMS[k].desc}">${ITEMS[k].icon} ${ITEMS[k].name}<small> ${ITEMS[k].desc}</small></button>`).join('');
-  renderAsk(); renderMission();
+  renderAsk(); renderMission(); renderJoinPlay();
   updateBtn(); Net.sync();
 }
 const clampTurns = v => Math.max(3, Math.min(99, parseInt(v) || DEFAULT_TURNS));
@@ -297,7 +301,7 @@ const turnsHtml = `<label class="tn">ラウンド数（メインステージ） 
   <label class="tn chk"><input type="checkbox" id="rbattle" checked> ⚔️ 対戦・妨害あり（対戦マス・略奪・同盟・泥棒などのアイテム）</label>
   <label class="tn chk"><input type="checkbox" id="revents" checked> 🌐 全体イベントあり（Vketシーズンなど）</label>
   <label class="tn chk"><input type="checkbox" id="rmission" checked> 🎴 隠しミッションあり</label>`;
-const readRules = () => ({ fog: $('#fog').checked, money: +$('#rmoney').value || START_MONEY, battle: $('#rbattle').checked, events: $('#revents').checked, missions: $('#rmission').checked });
+const readRules = () => ({ fog: $('#fog').checked, money: +$('#rmoney').value || START_MONEY, battle: $('#rbattle').checked, events: $('#revents').checked, missions: $('#rmission').checked, late: $('#rlate') ? $('#rlate').checked : true });
 
 // 名前は N(p) の目印で文章に埋め込み、表示時に「プレイヤー色のバッジ」(ログ) / 通常の文字(メッセージ) に変換する
 const N = p => `\u0001${G.ps.indexOf(p)}\u0002`;
@@ -351,7 +355,7 @@ function openProfile() {
   $('#psave').onclick = () => { d.close(); applyProfile(cleanProfile({ name: d.querySelector('.nm').value.trim(), img, color: cc.get() }, me.name)); };
   d.showModal();
 }
-window.VER_UI = '2026.10.25-t1';
+window.VER_UI = '2026.10.25-t3';
 
 // ===== クイズ：問題の登録エディタ（ロビー/設定画面） =====
 let _qid = 0;
@@ -413,4 +417,13 @@ function renderQuiz() {
     h += `<div class="qans">正解：<b>${esc(r.correct)}</b></div><ul class="qres">${r.rows.map(x => `<li>${who(x.seat)} ${esc(x.pick)} ${x.win ? '✅' : '❌'}${x.note ? ` <small>${esc(x.note)}</small>` : ''}</li>`).join('')}</ul><div class="qst">${esc(r.summary)}</div>`;
   }
   el.innerHTML = h;
+}
+
+// 観戦者向け：途中参戦ボタン
+let jpSig = '';
+function renderJoinPlay() {
+  const el = $('#joinplay'); if (!el) return;
+  const can = Net.on && Net.spec && !G.over && G.ps.length < MAX_PLAYERS && !(G.rules && G.rules.late === false), allow = Net.allowTeam !== false;
+  const sig = can + '|' + allow + '|' + G.ps.length; if (sig === jpSig) return; jpSig = sig;
+  el.innerHTML = can ? `<div class="jp"><b>⚔️ 途中参戦</b><span>${allow ? 'チームを選んで、参加者として参戦できます（今のラウンドの最後から手番に加わります）' : 'チームは自動で決まります。参加者として参戦できます'}</span><div>${allow ? [0, 1].map(t => `<button data-t="${t}">${TEAMS[t].icon} ${TEAMS[t].name}で参戦</button>`).join('') : '<button data-t="-1">⚔️ 参戦する</button>'}</div></div>` : '';
 }

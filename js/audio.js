@@ -149,4 +149,4 @@ function audioTick() {
   ['pointerdown', 'keydown'].forEach(ev => document.addEventListener(ev, audioUnlock));
   document.addEventListener('click', e => { if (e.target.closest && e.target.closest('button')) _sfx('click'); });
 })();
-window.VER_AUDIO = '2026.10.25-t1';
+window.VER_AUDIO = '2026.10.25-t3';

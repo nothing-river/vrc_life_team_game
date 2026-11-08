@@ -127,21 +127,23 @@ function openMini(kind, title, done) {
   miniOpen = true; d.oncancel = e => e.preventDefault();
   const fin = v => setTimeout(() => { d.close(); miniOpen = false; done(v); }, 1000);
   const head = `<h3>${fmt(title, true)}</h3>`;
+  // ボタンの色は直接指定する（マウスが乗っているときのCSSに負けて緑にならない不具合の対策）
+  const col = cls => { const b = d.querySelector('#mbtn'); b.className = 'mbig ' + cls; b.style.background = { wait: '#ffd0d0', go: '#5fe36a', bad: '#ff8f8f', ok: '#ffe08a' }[cls] || ''; };
   if (kind === 'react') {
     d.innerHTML = head + '<p>準備ができたらスタート。<b>緑になったら</b>すぐタップ！早すぎるとフライングです。</p><button class="mbig" id="mbtn">スタート</button>';
     const b = d.querySelector('#mbtn'); let st = 0, t0 = 0, to = null;
     b.onpointerdown = ev => {
       ev.preventDefault();
-      if (st === 0) { st = 1; b.textContent = '…待って…'; b.className = 'mbig wait'; sendProg({ s: 'wait' }); to = setTimeout(() => { st = 2; b.textContent = '今だ！！'; b.className = 'mbig go'; t0 = performance.now(); sendProg({ s: 'go' }); }, 1500 + Math.random() * 2500); }
-      else if (st === 1) { clearTimeout(to); st = 3; b.textContent = 'フライング！'; b.className = 'mbig bad'; sendProg({ s: 'bad' }); fin(9999); }
-      else if (st === 2) { st = 3; const ms = Math.round(performance.now() - t0); b.textContent = `${ms}ms`; b.className = 'mbig ok'; sendProg({ s: 'ms', ms }); fin(ms); }
+      if (st === 0) { st = 1; b.textContent = '…待って…'; col('wait'); sendProg({ s: 'wait' }); to = setTimeout(() => { st = 2; b.textContent = '今だ！！'; col('go'); t0 = performance.now(); sendProg({ s: 'go' }); }, 1500 + Math.random() * 2500); }
+      else if (st === 1) { clearTimeout(to); st = 3; b.textContent = 'フライング！'; col('bad'); sendProg({ s: 'bad' }); fin(9999); }
+      else if (st === 2) { st = 3; const ms = Math.round(performance.now() - t0); b.textContent = `${ms}ms`; col('ok'); sendProg({ s: 'ms', ms }); fin(ms); }
     };
   } else {
     d.innerHTML = head + '<p>スタートを押したら<b>5秒間</b>、できるだけ連打！</p><button class="mbig" id="mbtn">スタート</button>';
     const b = d.querySelector('#mbtn'); let st = 0, n = 0, left = 5, lastP = 0;
     b.onpointerdown = ev => {
       ev.preventDefault();
-      if (st === 0) { st = 1; n = 0; b.className = 'mbig go'; b.textContent = `0回 / 残り5秒`; const iv = setInterval(() => { left--; b.textContent = `${n}回 / 残り${left}秒`; if (left <= 0) { clearInterval(iv); st = 2; b.className = 'mbig ok'; b.textContent = `${n}回！`; sendProg({ s: 'end', n }); fin(n); } }, 1000); }
+      if (st === 0) { st = 1; n = 0; col('go'); b.textContent = `0回 / 残り5秒`; const iv = setInterval(() => { left--; b.textContent = `${n}回 / 残り${left}秒`; if (left <= 0) { clearInterval(iv); st = 2; col('ok'); b.textContent = `${n}回！`; sendProg({ s: 'end', n }); fin(n); } }, 1000); }
       else if (st === 1) { n++; b.textContent = `${n}回 / 残り${left}秒`; const now = Date.now(); if (now - lastP > 180) { lastP = now; sendProg({ s: 'tap', n }); } }
     };
   }
@@ -259,14 +261,14 @@ Object.assign(H, {
     const gi = rnd(0, games.length - 1), bet = pick([300, 600, 1200]) * K;
     const both = [me, idxOf(o)]; // 対戦する2人（サイコロは各自が自分で振る）
     say(`⚔️ 対戦！ランダムで決定\n${N(p)} VS ${N(o)}\n${games[gi]}　賭け金 ${yen(bet)}`); log(`${N(p)}が${N(o)}に${games[gi]}を挑んだ（${yen(bet)}）`); await sleep(3200);
-    let w = 0;
-    if (gi === 0) {
+    let w = 0; const oi = idxOf(o), nm = s => N(G.ps[s]);
+    if (gi === 0) { // ダイス勝負：1人ずつ、自分でボタンを押してサイコロを振る
       for (let t = 0; t < 3; t++) {
-        await askMany(both, '🎲 サイコロを振ろう！（ボタンを押す）', ['🎲 振る'], 'choice', 30);
-        const a = rnd(1, 6), b = rnd(1, 6); showDice(`${a} vs ${b}`); say(`🎲 ${N(p)}：${a}　${N(o)}：${b}`); await sleep(2000);
+        await askOne(me, `${nm(me)}：🎲 サイコロを振ろう！（ボタンを押す）`, ['🎲 振る'], 'choice', 30); sfx('roll'); const a = rnd(1, 6); showDice(a); say(`🎲 ${nm(me)}：${a}`); await sleep(1500);
+        await askOne(oi, `${nm(oi)}：🎲 サイコロを振ろう！（ボタンを押す）`, ['🎲 振る'], 'choice', 30); sfx('roll'); const b = rnd(1, 6); showDice(`${a} vs ${b}`); say(`🎲 ${nm(me)}：${a}　${nm(oi)}：${b}`); await sleep(2000);
         if (a !== b) { w = a > b ? 1 : -1; break; } say('同点！もう一回'); await sleep(900);
       }
-    } else if (gi === 1) {
+    } else if (gi === 1) { // チンチロ：1人ずつ、自分でサイコロを振る（役が出なければ最大3回まで振り直し）
       const chin = () => {
         const d = [rnd(1, 6), rnd(1, 6), rnd(1, 6)].sort((x, y) => x - y); let s, nm;
         if (d[0] === d[2]) { s = d[0] === 1 ? 200 : 100 + d[0]; nm = d[0] === 1 ? 'ピンゾロ(最強)' : `${d[0]}のゾロ目`; }
@@ -275,16 +277,28 @@ Object.assign(H, {
         else if (d[0] === d[1]) { s = d[2]; nm = `目${d[2]}`; } else if (d[1] === d[2]) { s = d[0]; nm = `目${d[0]}`; } else { s = 0; nm = '役なし'; }
         return { s, txt: `🎲${d.join(' ')} ${nm}` };
       };
+      const roll3 = async seat => {
+        let r;
+        for (let t = 1; t <= 3; t++) {
+          await askOne(seat, `${nm(seat)}：🎰 チンチロ！サイコロを3つ振ろう（${t}回目）`, ['🎲🎲🎲 振る'], 'choice', 30); sfx('roll');
+          r = chin(); showDice(r.txt.replace('🎲', '')); say(`${nm(seat)}：${r.txt}（${t}回目）`); await sleep(2000);
+          if (r.s !== 0) break; if (t < 3) { say(`${nm(seat)}：役なし…もう一度振れる！`); await sleep(900); }
+        }
+        return r;
+      };
       for (let t = 0; t < 3; t++) {
-        await askMany(both, '🎰 チンチロ！サイコロを3つ振ろう', ['🎲🎲🎲 振る'], 'choice', 30);
-        const a = chin(), b = chin(); say(`${N(p)}：${a.txt}\n${N(o)}：${b.txt}`); await sleep(2600);
+        const a = await roll3(me), b = await roll3(oi); say(`${nm(me)}：${a.txt}\n${nm(oi)}：${b.txt}`); await sleep(2800);
         if (a.s !== b.s) { w = a.s > b.s ? 1 : -1; break; } say('引き分け！もう一回'); await sleep(900);
       }
-    } else if (gi === 2) {
-      const a = rnd(1, 6); say(`🃏 最初の数字は ${a}`); await sleep(900);
-      const g = await askOne(me, `${N(p)}：次の数字は？（最初は ${a}）`, ['ハイ（大きい）', 'ロー（小さい）']);
-      let b; do { b = rnd(1, 6); } while (b === a);
-      showDice(`${a} → ${b}`); w = (g === 0) === (b > a) ? 1 : -1; say(`${a} → ${b}\n${w > 0 ? N(p) + 'の予想的中！' : N(p) + 'の予想ハズレ…'}`); await sleep(2200);
+    } else if (gi === 2) { // ハイ&ロー（心理戦）：数字は相手(守る側)が決める。自動では出さない
+      const nums = [1, 2, 3, 4, 5, 6];
+      say(`🃏 ハイ&ロー（心理戦）\n${nm(oi)}が数字を2つ決めます。\n${nm(me)}は「隠された数字が大きいか小さいか」を当てよう`); await sleep(3000);
+      const a = nums[await askOne(oi, `${nm(oi)}：🃏 公開する数字を決めよう（${nm(me)}に見せる数字）`, nums.map(String), 'choice', 45)];
+      const rest = nums.filter(x => x !== a);
+      const b = rest[await askOne(oi, `${nm(oi)}：🃏 隠す数字を決めよう（公開する数字は ${a}。${nm(me)}には見えません）`, rest.map(String), 'choice', 45)];
+      showDice(`${a} → ？`); say(`🃏 公開された数字は ${a}\n隠された数字は…？`); await sleep(1200);
+      const g = await askOne(me, `${nm(me)}：🃏 隠された数字は ${a} より…？（心理戦！）`, ['ハイ（大きい）', 'ロー（小さい）'], 'choice', 45);
+      showDice(`${a} → ${b}`); w = (g === 0) === (b > a) ? 1 : -1; say(`公開 ${a} → 隠し ${b}\n${w > 0 ? nm(me) + 'の予想的中！' : nm(me) + 'の予想ハズレ…'}`); await sleep(2800);
     } else {
       const react = gi === 3, seats = both;
       const r = await askMany(seats, react ? '⚡ 反応速度勝負！緑になったらタップ' : '👆 連打勝負！5秒間できるだけ連打', [], react ? 'react' : 'tap', 60);
@@ -366,4 +380,16 @@ H.marry = async p => {
   if (!was && p.married) { const os = allOthers(p); if (os.length) { await sleep(1500); const o = pick(os); add(o, 500, '💐 結婚式のブーケをキャッチ！'); if (!o.sugar && rnd(1, 3) === 1) { gainSugar(o); note(o, 'ブーケがきっかけでお砂糖ができた🍬'); } } }
 };
 H.ex = async p => { const e0 = p.exes, s0 = p.sugar; await _ex(p); if (p.exes < e0 && p.sugar > s0) bump(p, 'reunion'); };
-window.VER_EXTRA = '2026.10.25-t1';
+window.VER_EXTRA = '2026.10.25-t3';
+
+// ===== 途中参戦（観戦者だけが、ゲーム中に参加者になれる）=====
+function addLatePlayer(prof) {
+  const t = prof.team === 1 ? 1 : 0, kin = G.ps.filter(q => q.team === t).length, i = G.ps.length;
+  const p = newPlayer({ name: prof.name, img: prof.img, team: t, color: prof.color || teamColor(t, kin) }, G.rules);
+  if (!G.rules || G.rules.missions !== false) p.mission = pick(Object.keys(MISSIONS));
+  G.ps.push(p); G.order.push(i); (prof.qs || []).forEach(q => G.qpool.push({ ...q, author: i }));
+  Net.bc({ k: 'addp', i, img: prof.img }); Net.flush(); setPlayerStyles(); sfx('item');
+  head(`⚔️ ${N(p)}が${TEAMS[t].icon}${TEAMS[t].name}に途中参戦！`, 'start'); say(`⚔️ 途中参戦！\n${N(p)}（${TEAMS[t].icon}${TEAMS[t].name}）\n所持金 ${yen(p.money)} でスタート`); log(`⚔️ ${N(p)}が${TEAMS[t].icon}${TEAMS[t].name}に途中参戦！（手番は今のラウンドの最後に回ります）`);
+  renderStat(); renderTokens();
+}
+window.VER_EXTRA = window.VER_EXTRA;

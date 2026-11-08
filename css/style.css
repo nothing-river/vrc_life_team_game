@@ -1,4 +1,4 @@
-:root{--ver:'2026.10.25-t1'}
+:root{--ver:'2026.10.25-t3'}
 /* パステル（白・水色ベース）。色は :root の変数で一括変更できます */
 :root{--bg:#f4fbff;--panel:#fff;--line:#d3e6f4;--ink:#3d4f6b;--sub:#6b7d99;--sugar:#ffc2d9;--mint:#bdeee3;--gold:#ffe29a;--sky:#4f93c4;--shadow:0 2px 8px #7fb3d933}
 *{box-sizing:border-box}
@@ -297,3 +297,9 @@ h1 .tag{font-size:.4em;color:#fff;background:linear-gradient(90deg,#ff8fa8,#7fb6
 
 body.playing #stat .pill{font-size:.68rem}
 body.playing .tb{padding:3px 5px}
+
+.tpick{min-height:0;padding:0 6px;font-size:.85rem;border-radius:99px;opacity:.55}.tpick.on{opacity:1;background:var(--gold);border-color:#ffd666}
+
+.mbig.wait,.mbig.wait:hover{background:#ffd0d0!important}.mbig.go,.mbig.go:hover{background:#5fe36a!important;color:#103b14}.mbig.bad,.mbig.bad:hover{background:#ff8f8f!important}.mbig.ok,.mbig.ok:hover{background:#ffe08a!important}
+
+#joinplay{flex:none}.jp{border:2px dashed #ffb35c;border-radius:12px;background:#fff8ee;padding:6px 8px;font-size:.82rem}.jp b{display:block;color:#b9680a}.jp span{display:block;color:var(--sub);margin:2px 0 4px}.jp button{margin:2px 4px 2px 0;font-size:.82rem;background:#ffe3b8;border-color:#ffb35c}

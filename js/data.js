@@ -110,7 +110,7 @@ const BADGES = {
   regs:   { icon: '🎪', name: '常連', desc: '集会の常連。1人につき集会の収入+15%（最大5人）' },
   mission:{ icon: '🎴', name: 'ミッション', desc: '隠しミッションを持っている（内容は本人だけが見られる）' }
 };
-window.VER_DATA = '2026.10.25-t1';
+window.VER_DATA = '2026.10.25-t3';
 
 // ===== クイズ（登録された問題を全員が回答）=====
 const ANSWER_SEC = 20;        // 回答の制限時間（秒）
@@ -173,7 +173,7 @@ const GLOBALS = [
 ];
 
 // ===== チーム戦 =====
-const MAX_PLAYERS = 20, MAX_SPECS = 6, NEAR = 5, GOAL_ROUNDS_MAX = 4; // 参加者20人／観戦者6人／近くの駒を表示するマス数／ゴールステージの最大ラウンド
+const MAX_PLAYERS = 20, MAX_SPECS = 6, NEAR = 5, GOAL_ROUNDS_MAX = 60; // 参加者20人／観戦者6人／近くの駒を表示するマス数／ゴールステージの安全装置（通常は全員ゴールで終了）
 const TEAMS = [{ icon: '🔴', name: 'あかチーム' }, { icon: '🔵', name: 'あおチーム' }];
 function hsl2hex(h, s, l) {
   s /= 100; l /= 100; const k = n => (n + h / 30) % 12, a = s * Math.min(l, 1 - l), f = n => l - a * Math.max(-1, Math.min(k(n) - 3, Math.min(9 - k(n), 1)));
