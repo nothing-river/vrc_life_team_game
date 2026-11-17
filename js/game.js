@@ -22,7 +22,7 @@ function initUI(ps, turns, rules) {
   if (G.fog) G.hid = makeHid(LAYOUT.length, false);
   $('#setup').hidden = true; $('#game').hidden = false; if (document.body) document.body.classList.add('playing');
   $('#roll').onclick = () => onRoll(-1);
-  $('#joinplay').onclick = e => { const b = e.target.closest('button'); if (b && Net.conn && Net.conn.open) { Net.conn.send({ k: 'joinplay', t: +b.dataset.t }); b.disabled = true; } };
+  $('#joinplay').onclick = e => { const b = e.target.closest('button'); if (b && Net.host) { hostJoinPlay(+b.dataset.t); } else if (b && Net.conn && Net.conn.open) { Net.conn.send({ k: 'joinplay', t: +b.dataset.t }); b.disabled = true; } };
   $('#items').onclick = e => { const x = e.target.closest('button'); if (x && !x.disabled) onRoll(+x.dataset.i); };
   $('#quiz').onclick = e => {
     const b = e.target.closest('button'); if (!b || b.disabled) return;
@@ -70,7 +70,8 @@ async function rollDice(n = 1) {
 }
 
 function add(p, n, text, fm = 0) {
-  n = Math.round(boost(p, n) * MONEY_SCALE / 100) * 100; p.money += n; if (fm) fame(p, fm);
+  const raw = boost(p, n) * (G.noScale ? 1 : wf(p)) * MONEY_SCALE, uy = Math.abs(raw) >= 1e6 ? 1e4 : 1e3; // 所持金に応じて金額が増減（大きい金額は万円単位に丸める）
+  n = Math.round(raw / uy) * uy; p.money += n; if (fm) fame(p, fm);
   if (n > 0 && p.ally != null && G.ps[p.ally] && p.allyN > 0) { const q = G.ps[p.ally], x = Math.round(n * 0.3 / 1000) * 1000; if (x > 0) { q.money += x; log(`${N(q)}：同盟ボーナス（${N(p)}の収入から +${yen(x)}）`); } }
   const f = fm > 0 ? ' ⭐UP' : fm < 0 ? ' ⭐DOWN' : '';
   log(`${N(p)}：${text}（${n >= 0 ? '+' : ''}${yen(n)}${f}）`);
@@ -111,7 +112,7 @@ async function moveBy(p, n, delay) {
     else {
       const nx = NEXT[p.pos];
       p.pos = nx.length > 1 ? nx[await askRoute(p, p.pos)] : nx[0];
-      if (p.pos === 0) { bump(p, 'laps'); add(p, 1000, 'ログインボーナス（1周）'); await sleep(500); }
+      if (p.pos === 0) { bump(p, 'laps'); G.noScale = true; add(p, 1000, 'ログインボーナス（1周）'); G.noScale = false; await sleep(500); }
     }
     sfx('step'); renderTokens(); await sleep(delay);
   }
@@ -338,7 +339,7 @@ const H = {
     if (p.sugar > 1) { losesugar(p, p.sugar - 1, '結婚で多糖が発覚…他のお砂糖とは別れた'); await sleep(1000); }
     p.married = true; let gift = 0;
     sample(others(p), 4).forEach(o => { o.money -= 300 * MONEY_SCALE; gift += 300; });
-    add(p, gift, '結婚！みんなから祝儀'); renderStat();
+    G.noScale = true; add(p, gift, '結婚！みんなから祝儀'); G.noScale = false; renderStat();
   },
   ex: async p => {
     if (p.exes <= 0) { say('元お砂糖はいない…\n今回は何も起きなかった'); return log(`${N(p)}：元お砂糖がいないので何も起きなかった`); }
@@ -439,7 +440,7 @@ const H = {
   goal: async p => {
     if (p.done) return;
     sfx('goal'); p.done = true; p.rank = ++G.fin;
-    add(p, GOAL_BONUS[Math.min(p.rank, GOAL_BONUS.length) - 1], `${p.rank}位でゴール！🏁`);
+    G.noScale = true; add(p, GOAL_BONUS[Math.min(p.rank, GOAL_BONUS.length) - 1], `${p.rank}位でゴール！🏁`); G.noScale = false;
   }
 };
 
@@ -477,4 +478,4 @@ function finish() {
     ${Net.on ? '<p class="lead">ホストが「ルームに戻る」を押すと、戻ってきた人が同じルームに集まります（観戦者はそのまま残ります）。</p>' : ''}`;
   $('#result').showModal();
 }
-window.VER_GAME = '2026.10.25-t3';
+window.VER_GAME = '2026.10.25-t4';

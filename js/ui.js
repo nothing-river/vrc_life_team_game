@@ -108,7 +108,7 @@ function buildSetup(onStart) {
     let pt; // 入室後も名前・写真を変更できる（開始前）。変更はロビーの全員に反映
     const sendProfile = () => { clearTimeout(pt); pt = setTimeout(() => {
       if (Net.started) return;
-      if (isHost) { if (Net.lobby.length) { const t = Net.lobby[0].team; Net.lobby[0] = meNow(); Net.lobby[0].team = t; pushLobby(); ui.update(Net.lobby, specNames()); } }
+      if (isHost) { if (Net.hostProf) { const t = Net.hostProf.team; Net.hostProf = meNow(); Net.hostProf.team = t; rebuildLobby(); pushLobby(); ui.update(Net.lobby, specNames()); } }
       else if (Net.conn && Net.conn.open) Net.conn.send({ k: 'profile', ...meNow() });
     }, 350); };
     const cc = colorCtl(el.querySelector('.cwrap'), COLORS[0], sendProfile);
@@ -122,23 +122,24 @@ function buildSetup(onStart) {
       update: (list, specs = []) => {
         const allow = Net.allowTeam !== false;
         const cnt = [0, 0], kin = list.map(p => cnt[p.team || 0]++), eff = list.map((p, i) => p.color || teamColor(p.team || 0, kin[i]));
-        const mine = isHost ? 0 : Net.seat; if (!Net.spec && list[mine]) cc.setDefault(eff[mine]);
+        const mine = isHost ? (Net.hostPlays ? 0 : -1) : Net.seat; if (!Net.spec && list[mine]) cc.setDefault(eff[mine]);
         const col = t => `<div class="tcol t${t}"><h3>${TEAMS[t].icon} ${TEAMS[t].name}（${cnt[t]}人）</h3>${list.map((p, i) => [p, i]).filter(([p]) => (p.team || 0) === t).map(([p, i]) =>
-          `<div class="lp">${tok({ ...p, color: eff[i] })}<span>${esc(p.name)}${i === 0 ? '（ホスト）' : ''}${!Net.spec && i === mine ? ' ★' : ''}</span><small>❓${(p.qs ? p.qs.length : p.qn) || 0}</small>${!Net.spec && i === mine && (isHost || allow) ? [0, 1].map(t => `<button class="tpick${(p.team || 0) === t ? ' on' : ''}" data-t="${t}" title="${TEAMS[t].name}にする">${TEAMS[t].icon}</button>`).join('') : (isHost ? `<button class="tmv" data-i="${i}" title="もう一方のチームへ移動">⇄</button>` : '')}</div>`).join('')}</div>`;
+          `<div class="lp">${tok({ ...p, color: eff[i] })}<span>${esc(p.name)}${p.host ? '（ホスト）' : ''}${!Net.spec && i === mine ? ' ★' : ''}</span><small>❓${(p.qs ? p.qs.length : p.qn) || 0}</small>${!Net.spec && i === mine && (isHost || allow) ? [0, 1].map(t => `<button class="tpick${(p.team || 0) === t ? ' on' : ''}" data-t="${t}" title="${TEAMS[t].name}にする">${TEAMS[t].icon}</button>`).join('') : (isHost ? `<button class="tmv" data-i="${i}" title="もう一方のチームへ移動">⇄</button>` : '')}</div>`).join('')}</div>`;
         const ok = list.length >= 2 && cnt[0] > 0 && cnt[1] > 0;
         $('#lob').innerHTML = `<h2>参加者 ${list.length}/${MAX_PLAYERS}</h2><div class="tcols">${col(0)}${col(1)}</div>`
           + (Math.abs(cnt[0] - cnt[1]) > 1 ? '<p class="err">チームの人数に差があります。公平にするなら振り分けを調整してください。</p>' : '')
           + `<p class="lead">👀 観戦者 ${specs.length}/${MAX_SPECS}${specs.length ? '：' + specs.map(esc).join('、') : ''}</p>`
           + (Net.spec ? '<p class="lead">👀 観戦者として入室しました。ホストの開始を待っています…</p>' : `<p class="lead">${allow ? '自分のチームは、名前の横の🔴🔵ボタンで選べます。' : 'チームはホストが決めます。'}名前・写真・色は入室後も上の欄で変更できます。</p>`)
-          + (isHost ? `<div class="hbtns"><button id="rand">🔀 ランダムに振り分け</button><button id="start" class="big" ${ok ? '' : 'disabled'}>この人数で開始</button></div>` : (Net.spec ? '' : '<p class="lead">ホストの開始を待っています…</p>'));
+          + (isHost ? `<div class="hbtns"><button id="hostspec">${Net.hostPlays ? '👀 私は観戦者になる' : '🎮 私も参加者になる'}</button><button id="rand">🔀 ランダムに振り分け</button><button id="start" class="big" ${ok ? '' : 'disabled'}>この人数で開始</button></div>` : (Net.spec ? '' : '<p class="lead">ホストの開始を待っています…</p>'));
       }
     };
     $('#lob').onclick = e => {
       const b = e.target.closest('button'); if (!b) return;
-      if (b.classList.contains('tpick')) { const t = +b.dataset.t; if (isHost) { Net.lobby[0].team = t; pushLobby(); ui.update(Net.lobby, specNames()); } else if (Net.conn && Net.conn.open) Net.conn.send({ k: 'team', t }); return; }
+      if (b.classList.contains('tpick')) { const t = +b.dataset.t; if (isHost) { Net.hostProf.team = t; pushLobby(); ui.update(Net.lobby, specNames()); } else if (Net.conn && Net.conn.open) Net.conn.send({ k: 'team', t }); return; }
       if (!isHost) return;
       if (b.classList.contains('tmv')) { const p = Net.lobby[+b.dataset.i]; p.team = (p.team || 0) ^ 1; }
       else if (b.id === 'rand') { const idx = Net.lobby.map((_, i) => i).sort(() => Math.random() - 0.5); idx.forEach((i, k) => Net.lobby[i].team = k % 2); }
+      else if (b.id === 'hostspec') { Net.hostPlays = !Net.hostPlays; Net.spec = !Net.hostPlays; Net.seat = Net.hostPlays ? 0 : -1; rebuildLobby(); }
       else if (b.id === 'start') return startOnline();
       else return;
       pushLobby(); ui.update(Net.lobby, specNames());
@@ -228,6 +229,7 @@ function bindBoardHover() {
 const chip = (b, suffix = '') => `<span class="chip" data-tip="${esc(b.name)}：${esc(b.desc)}" title="${esc(b.name)}：${esc(b.desc)}">${b.icon}${b.name}${suffix}</span>`;
 function chips(p, hide) {
   const c = [], S = hide ? Math.min(p.sugar, 1) : p.sugar, tip = (t, label) => `<span class="chip" data-tip="${esc(t)}" title="${esc(t)}">${label}</span>`;
+  c.push(tip('マスの金額の倍率：所持金が「初期所持金の何倍か」に応じて、マスの収入・出費が増減します（0.5〜5倍）', `💹金額×${wf(p).toFixed(1)}`));
   if (S) c.push(chip(BADGES.sugar, '×' + S));
   if (p.sugar && !hide) { const t = TRAITS[p.trait]; c.push(tip(`好感度：${BADGES.love.desc}${t ? '／性格 ' + t.name + '：' + t.desc : ''}`, `💗${p.love}/10${t ? t.icon + t.name : ''}`)); }
   if (p.live) c.push(chip(BADGES.live));
@@ -255,7 +257,7 @@ function renderLegend() {
 }
 function renderTurn() {
   const cp = G.ps[G.t], n = G.ps.length, k = (G.order || []).indexOf(G.t) + 1, goal = G.stage === 'goal', left = G.turns - G.round;
-  const head1 = goal ? '<b class="big1">🏁 ゴールステージ</b><span>全員がゴールするまで続きます（第${G.goalRound + 1}ラウンド）</span>'
+  const head1 = goal ? '<b class="big1">🏁 ゴールステージ</b><span>全員がゴールするまで</span>'
     : `<b class="big1">第 ${G.round} / ${G.turns} ターン</b><span>${left > 0 ? (left <= 5 ? `ゴールステージまであと${left}ターン` : `残り${left}ターン`) : '最終ターン！この後ゴールステージへ'}</span>`;
   const bar = goal ? '' : `<div class="bar"><i style="width:${Math.min(100, (G.round - 1 + k / n) / G.turns * 100)}%"></i></div>`;
   $('#turn').innerHTML = `<div class="t1">${head1}${G.global ? `<span class="gl">🌐 ${esc(G.global.icon)}${esc(G.global.name)}：${esc(G.global.desc)}</span>` : ''}</div>${bar}<div class="t2" style="${cv(cp.color)}">${tok(cp)}<strong>${TEAMS[cp.team].icon}${esc(cp.name)}</strong> の番<small>（手番 ${k}/${n}）</small></div>`;
@@ -355,7 +357,7 @@ function openProfile() {
   $('#psave').onclick = () => { d.close(); applyProfile(cleanProfile({ name: d.querySelector('.nm').value.trim(), img, color: cc.get() }, me.name)); };
   d.showModal();
 }
-window.VER_UI = '2026.10.25-t3';
+window.VER_UI = '2026.10.25-t4';
 
 // ===== クイズ：問題の登録エディタ（ロビー/設定画面） =====
 let _qid = 0;

@@ -35,15 +35,27 @@ const cleanProfile = (m, def) => ({
   color: typeof m.color === 'string' && /^#[0-9a-fA-F]{6}$/.test(m.color) ? m.color.toLowerCase() : null,
   img: typeof m.img === 'string' && m.img.length < 80000 && /^data:image\/jpeg;base64,[A-Za-z0-9+\/=]+$/.test(m.img) ? m.img : null
 });
-const specNames = () => Net.specs.map(s => s.prof.name);
+const specNames = () => (Net.hostPlays === false && Net.hostProf ? [Net.hostProf.name + '（ホスト）'] : []).concat(Net.specs.map(s => s.prof.name));
+// ロビーの並び：ホスト（参加者のとき）＋入室順の参加者。座席番号＝この並びの位置（開始前だけ使う）
+function rebuildLobby() {
+  Net.lobby = (Net.hostPlays ? [Net.hostProf] : []).concat(Net.conns.map(c => c.prof));
+  Net.conns.forEach((c, j) => { const s = j + (Net.hostPlays ? 1 : 0); if (c.seat !== s) { c.seat = s; if (c.open) c.send({ k: 'seat', seat: s }); } });
+}
+// ホストが観戦者のまま、ゲーム中に参加者として途中参戦する
+function hostJoinPlay(t) {
+  if (!Net.host || Net.hostPlays || !Net.started || G.over || Net.lobby.length >= MAX_PLAYERS || (G.rules && G.rules.late === false)) return;
+  Net.hostProf.team = Net.allowTeam !== false && (t === 0 || t === 1) ? t : smallerTeam();
+  Net.hostPlays = true; Net.spec = false; Net.lobby.push(Net.hostProf); Net.seat = Net.lobby.length - 1;
+  $('#editme').hidden = false; jpSig = ''; addLatePlayer(Net.hostProf);
+}
 const smallerTeam = () => { const c = [0, 0]; Net.lobby.forEach(p => c[p.team || 0]++); return c[1] < c[0] ? 1 : 0; };
-const pushLobby = () => Net.bc({ k: 'lobby', list: Net.lobby.map(p => ({ name: p.name, img: p.img, color: p.color, team: p.team || 0, qn: (p.qs || []).length })), specs: specNames(), allow: Net.allowTeam !== false }); // 問題の中身（正解）は送らない
+const pushLobby = () => Net.bc({ k: 'lobby', list: Net.lobby.map(p => ({ name: p.name, img: p.img, color: p.color, team: p.team || 0, host: p === Net.hostProf, qn: (p.qs || []).length })), specs: specNames(), allow: Net.allowTeam !== false }); // 問題の中身（正解）は送らない
 const catchUp = c => { if (Net.startMsg) c.send(Net.startMsg); c.send({ k: 'state', s: Net.snap() }); }; // 観戦者が途中から入ったとき
 
 function hostRoom(phrase, me, ui) {
   roomId(phrase).then(id => {
     const peer = new Peer(id), host = cleanProfile(me, 'ホスト'); host.team = 0;
-    Object.assign(Net, { peer, on: true, host: true, seat: 0, spec: false, lobby: [host], conns: [], specs: [], started: false, startMsg: null, allowTeam: $('#rteam') ? $('#rteam').checked : true });
+    Object.assign(Net, { peer, on: true, host: true, seat: 0, spec: false, hostProf: host, hostPlays: true, lobby: [host], conns: [], specs: [], started: false, startMsg: null, allowTeam: $('#rteam') ? $('#rteam').checked : true });
     peer.on('open', () => ui.update(Net.lobby, specNames()));
     peer.on('error', e => ui.error(e.type === 'unavailable-id' ? 'その合言葉は使われています。別の合言葉にしてください' : '接続エラー: ' + e.type));
     peer.on('connection', c => {
@@ -56,13 +68,13 @@ function hostRoom(phrase, me, ui) {
             return;
           }
           if (Net.started || Net.lobby.length >= MAX_PLAYERS) return c.send({ k: 'deny', why: Net.started ? 'すでに開始しています（観戦者としてなら入れます）' : '参加者が満員です（20人まで。観戦者としてなら入れます）' });
-          c.seat = Net.lobby.length; c.prof = cleanProfile(m, 'ゲスト'); c.prof.qs = c.prof.qs || []; c.prof.team = smallerTeam(); Net.lobby.push(c.prof); Net.conns.push(c);
-          c.send({ k: 'seat', seat: c.seat }); pushLobby(); ui.update(Net.lobby, specNames());
+          c.prof = cleanProfile(m, 'ゲスト'); c.prof.qs = c.prof.qs || []; c.prof.team = smallerTeam(); Net.conns.push(c); rebuildLobby();
+          pushLobby(); ui.update(Net.lobby, specNames());
         } else if (m.k === 'profile') {
           if (c.spec) { c.prof = cleanProfile(m, '観戦者'); if (!Net.started) { pushLobby(); ui.update(Net.lobby, specNames()); } return; }
           if (!c.seat) return;
           const pf = cleanProfile(m, 'ゲスト'); pf.qs = pf.qs || (c.prof ? c.prof.qs : []) || []; pf.team = c.prof ? c.prof.team : 0; c.prof = pf;
-          if (Net.started) setProfile(c.seat, pf); else { Net.lobby[c.seat] = pf; pushLobby(); ui.update(Net.lobby, specNames()); }
+          if (Net.started) setProfile(c.seat, pf); else { rebuildLobby(); pushLobby(); ui.update(Net.lobby, specNames()); }
         } else if (c.spec && m.k !== 'joinplay') return; // 観戦者は操作できない（途中参戦の申し込みだけ受け付ける）
         else if (m.k === 'joinplay') { // 観戦者がゲーム中に参加者として途中参戦する
           if (!c.spec || !Net.started || G.over || Net.lobby.length >= MAX_PLAYERS || (G.rules && G.rules.late === false)) return c.send({ k: 'deny2', why: '今は参戦できません（満員、終了済み、またはホストが禁止しています）' });
@@ -79,8 +91,7 @@ function hostRoom(phrase, me, ui) {
           if (Net.started) c.back = true;
           else if (!Net.conns.includes(c) && Net.lobby.length < MAX_PLAYERS && c.prof) {
             Net.pending = (Net.pending || []).filter(x => x !== c);
-            c.seat = Net.lobby.length; Net.lobby.push(c.prof); Net.conns.push(c);
-            c.send({ k: 'seat', seat: c.seat }); pushLobby(); ui.update(Net.lobby, specNames());
+            Net.conns.push(c); rebuildLobby(); pushLobby(); ui.update(Net.lobby, specNames());
           }
         }
         else if (m.k === 'pick' && G.ask) submitAns(c.seat, m.v);
@@ -94,8 +105,7 @@ function hostRoom(phrase, me, ui) {
           G.ps[c.seat].auto = true; log(`${N(G.ps[c.seat])}が退出（自動で進行）`);
           if (G.t === c.seat && !G.busy) turn();
         } else { // 開始前の退出：席を詰める
-          const i = Net.conns.indexOf(c); if (i < 0) return; Net.conns.splice(i, 1); Net.lobby.splice(i + 1, 1);
-          Net.conns.forEach((x, j) => { x.seat = j + 1; x.open && x.send({ k: 'seat', seat: j + 1 }); });
+          if (!Net.conns.includes(c)) return; Net.conns = Net.conns.filter(x => x !== c); rebuildLobby();
           pushLobby(); ui.update(Net.lobby, specNames());
         }
       });
@@ -174,8 +184,7 @@ function backToRoom() {
   if (Net.host) {
     const keep = Net.conns.filter(c => c.open && c.back), rest = Net.conns.filter(c => c.open && !c.back);
     rest.forEach(c => c.seat = 0); Net.pending = rest; Net.conns = keep; Net.started = false; Net.startMsg = null;
-    Net.lobby = [Net.lobby[0]];
-    keep.forEach((c, j) => { c.seat = j + 1; Net.lobby.push(c.prof); c.send({ k: 'seat', seat: c.seat }); });
+    Net.seat = Net.hostPlays ? 0 : -1; Net.spec = !Net.hostPlays; rebuildLobby();
     pushLobby(); Net.ui.update(Net.lobby, specNames());
   } else if (Net.spec) {
     $('#lob').innerHTML = '<p class="lead">👀 観戦者としてルームに戻りました。ホストの開始を待っています…</p>';
@@ -184,4 +193,4 @@ function backToRoom() {
     $('#lob').innerHTML = '<p class="lead">ホストがルームに戻るのを待っています…</p>';
   }
 }
-window.VER_NET = '2026.10.25-t3';
+window.VER_NET = '2026.10.25-t4';

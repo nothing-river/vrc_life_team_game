@@ -1,4 +1,4 @@
-:root{--ver:'2026.10.25-t3'}
+:root{--ver:'2026.10.25-t4'}
 /* パステル（白・水色ベース）。色は :root の変数で一括変更できます */
 :root{--bg:#f4fbff;--panel:#fff;--line:#d3e6f4;--ink:#3d4f6b;--sub:#6b7d99;--sugar:#ffc2d9;--mint:#bdeee3;--gold:#ffe29a;--sky:#4f93c4;--shadow:0 2px 8px #7fb3d933}
 *{box-sizing:border-box}
