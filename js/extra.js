@@ -7,9 +7,6 @@ const allOthers = p => others(p).filter(o => !o.done);
 const foesOf = p => allOthers(p).filter(o => o.team !== p.team); // 妨害・対戦の相手は「相手チーム」だけ
 const idxOf = o => G.ps.indexOf(o);
 const note = (p, t) => { say(t); log(`${N(p)}：${t.replace(/\n/g, ' ')}`); };
-// マスの収入・出費は、所持金が「初期所持金の何倍か」に応じて増減する（0.5〜5倍）。例：初期300万→1000万なら約3.3倍
-const wf = p => Math.max(0.5, Math.min(5, p.money / ((G.rules && G.rules.money) || START_MONEY)));
-const wfPair = (a, b) => Math.max(0.5, Math.min(5, (a.money + b.money) / 2 / ((G.rules && G.rules.money) || START_MONEY)));
 const unit = n => Math.round(n / (10 * K)) * (10 * K); // 1万円単位（K=1000のとき）に丸める
 const missionOK = p => !!(p.mission && MISSIONS[p.mission] && MISSIONS[p.mission].ok(p));
 
@@ -261,7 +258,7 @@ Object.assign(H, {
     const foes = foesOf(p); if (!foes.length) return add(p, 200, '対戦相手がいないので不戦勝（賞金）');
     const me = idxOf(p), o = pick(foes); // 相手・ゲーム・賭け金はランダムで決まる
     const games = ['🎲 ダイス勝負', '🎰 チンチロ', '🃏 ハイ&ロー', '⚡ 反応速度', '👆 連打（5秒）'];
-    const gi = rnd(0, games.length - 1), bet = Math.max(10 * K, unit(pick([300, 600, 1200]) * K * wfPair(p, o)));
+    const gi = rnd(0, games.length - 1), bet = pick([300, 600, 1200]) * K;
     const both = [me, idxOf(o)]; // 対戦する2人（サイコロは各自が自分で振る）
     say(`⚔️ 対戦！ランダムで決定\n${N(p)} VS ${N(o)}\n${games[gi]}　賭け金 ${yen(bet)}`); log(`${N(p)}が${N(o)}に${games[gi]}を挑んだ（${yen(bet)}）`); await sleep(3200);
     let w = 0; const oi = idxOf(o), nm = s => N(G.ps[s]);
@@ -319,7 +316,7 @@ Object.assign(H, {
   },
   invest: async p => {
     if (p.royal && p.royal.n > 0) return add(p, 300, 'ワールドの評判が上がった（投資中）');
-    const i = await askOne(idxOf(p), `${N(p)}：ワールド制作に投資する？（${yen(unit(1000 * K * wf(p)))}を払うと、毎ターン${yen(unit(400 * K * wf(p)))}が5回入る。金額は所持金に応じて変わります）`, ['投資する', '見送る']);
+    const i = await askOne(idxOf(p), `${N(p)}：ワールド制作に投資する？（${yen(1000 * K)}を払うと、毎ターン${yen(400 * K)}が5回入る）`, ['投資する', '見送る']);
     if (i === 0) { p.royal = { n: 5, amt: 400 }; bump(p, 'invest'); add(p, -1000, 'ワールド制作に投資！印税が入るのを待とう📈'); } else note(p, '今回は投資を見送った');
   },
   avatar: async p => {
@@ -333,12 +330,11 @@ Object.assign(H, {
     else add(p, 800, '運営から通報協力のお礼が届いた', 1);
   },
   gamble: async p => {
-    const w = wf(p), S = v => yen(Math.max(10 * K, unit(v * K * w))), loan = Math.max(10 * K, unit(1500 * K * w));
-    const opts = [`堅実勝負（${S(300)}・勝率50%で2倍）`, `勝負（${S(600)}・勝率40%で2.5倍）`, `大勝負（${S(1200)}・勝率25%で5倍）`, `💳借金して大勝負（${yen(loan)}を借りて勝率25%で5倍）`, 'やめておく'];
-    const i = await askOne(idxOf(p), `${N(p)}：ギャンブル！どうする？（金額は所持金に応じて変わります）`, opts);
+    const opts = [`堅実勝負（${yen(300 * K)}・勝率50%で2倍）`, `勝負（${yen(600 * K)}・勝率40%で2.5倍）`, `大勝負（${yen(1200 * K)}・勝率25%で5倍）`, `💳借金して大勝負（${yen(1500 * K)}を借りて勝率25%で5倍）`, 'やめておく'];
+    const i = await askOne(idxOf(p), `${N(p)}：ギャンブル！どうする？`, opts);
     if (i === 4) return note(p, '賢明な判断…ギャンブルは見送った');
     const c = [{ b: 300, w: .5, m: 2 }, { b: 600, w: .4, m: 2.5 }, { b: 1200, w: .25, m: 5 }, { b: 1500, w: .25, m: 5, loan: true }][i];
-    if (c.loan) { p.debt += loan; p.money += loan; note(p, `💳 ${yen(loan)}を借金！（毎ターン利息、最終得点から引かれる）`); await sleep(1800); }
+    if (c.loan) { p.debt += 1500 * K; p.money += 1500 * K; note(p, `💳 ${yen(1500 * K)}を借金！（毎ターン利息、最終得点から引かれる）`); await sleep(1800); }
     say('🃏 運命の勝負…'); await sleep(1500);
     if (Math.random() < c.w) add(p, c.b * (c.m - 1), '🎉 大当たり！勝負に勝った'); else add(p, -c.b, '💸 負けた…');
   },
@@ -384,7 +380,7 @@ H.marry = async p => {
   if (!was && p.married) { const os = allOthers(p); if (os.length) { await sleep(1500); const o = pick(os); add(o, 500, '💐 結婚式のブーケをキャッチ！'); if (!o.sugar && rnd(1, 3) === 1) { gainSugar(o); note(o, 'ブーケがきっかけでお砂糖ができた🍬'); } } }
 };
 H.ex = async p => { const e0 = p.exes, s0 = p.sugar; await _ex(p); if (p.exes < e0 && p.sugar > s0) bump(p, 'reunion'); };
-window.VER_EXTRA = '2026.10.25-t4';
+window.VER_EXTRA = '2026.10.25-t5';
 
 // ===== 途中参戦（観戦者だけが、ゲーム中に参加者になれる）=====
 function addLatePlayer(prof) {

@@ -110,7 +110,7 @@ const BADGES = {
   regs:   { icon: '🎪', name: '常連', desc: '集会の常連。1人につき集会の収入+15%（最大5人）' },
   mission:{ icon: '🎴', name: 'ミッション', desc: '隠しミッションを持っている（内容は本人だけが見られる）' }
 };
-window.VER_DATA = '2026.10.25-t4';
+window.VER_DATA = '2026.10.25-t5';
 
 // ===== クイズ（登録された問題を全員が回答）=====
 const ANSWER_SEC = 20;        // 回答の制限時間（秒）

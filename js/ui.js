@@ -229,7 +229,6 @@ function bindBoardHover() {
 const chip = (b, suffix = '') => `<span class="chip" data-tip="${esc(b.name)}：${esc(b.desc)}" title="${esc(b.name)}：${esc(b.desc)}">${b.icon}${b.name}${suffix}</span>`;
 function chips(p, hide) {
   const c = [], S = hide ? Math.min(p.sugar, 1) : p.sugar, tip = (t, label) => `<span class="chip" data-tip="${esc(t)}" title="${esc(t)}">${label}</span>`;
-  c.push(tip('マスの金額の倍率：所持金が「初期所持金の何倍か」に応じて、マスの収入・出費が増減します（0.5〜5倍）', `💹金額×${wf(p).toFixed(1)}`));
   if (S) c.push(chip(BADGES.sugar, '×' + S));
   if (p.sugar && !hide) { const t = TRAITS[p.trait]; c.push(tip(`好感度：${BADGES.love.desc}${t ? '／性格 ' + t.name + '：' + t.desc : ''}`, `💗${p.love}/10${t ? t.icon + t.name : ''}`)); }
   if (p.live) c.push(chip(BADGES.live));
@@ -357,7 +356,7 @@ function openProfile() {
   $('#psave').onclick = () => { d.close(); applyProfile(cleanProfile({ name: d.querySelector('.nm').value.trim(), img, color: cc.get() }, me.name)); };
   d.showModal();
 }
-window.VER_UI = '2026.10.25-t4';
+window.VER_UI = '2026.10.25-t5';
 
 // ===== クイズ：問題の登録エディタ（ロビー/設定画面） =====
 let _qid = 0;
